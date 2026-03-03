@@ -2,6 +2,7 @@
 import React ,{useEffect,useState} from 'react'
 import axios from 'axios';
 import { UserDetailContext } from './context/userDetailContext';
+import Header from './_components/Header';
 function Provider ({children}:{children:React.ReactNode}){
 
 const[userDetail,setUserDetail]=useState(null)
@@ -23,10 +24,10 @@ CreateNewUser()
   return (
     <div>
       <UserDetailContext.Provider value={{ userDetail, setUserDetail }}>
-        <div className='max-w-7xl mx-auto'>
-            {children}
-            </div>
-    
+        <div className="max-w-7xl mx-auto">
+          <Header />
+          {children}
+        </div>
       </UserDetailContext.Provider>
     </div>
   );

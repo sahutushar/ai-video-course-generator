@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import axios from "axios";
+import { useRouter } from "next/navigation";
 import {
   InputGroup,
   InputGroupAddon,
@@ -25,6 +26,7 @@ function Hero() {
   const [type, setType] = useState("full-course");
   const [loading, setLoading] = useState(false);
   const { user } = useUser();
+  const router=useRouter();
 
   const GenerateCourseLayout = async () => {
      const toastId = toast.loading("Generating your course layout..");
@@ -46,7 +48,7 @@ function Hero() {
 
     // navigate to course editor page
 
-
+   router.push('/course/'+CourseId);
 
   }
   catch(e){
