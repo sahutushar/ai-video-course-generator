@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import axios from "axios";
+import { useRouter } from "next/navigation";
 import {
   InputGroup,
   InputGroupAddon,
@@ -25,10 +26,11 @@ function Hero() {
   const [type, setType] = useState("full-course");
   const [loading, setLoading] = useState(false);
   const { user } = useUser();
+  const router=useRouter();
 
   const GenerateCourseLayout = async () => {
      const toastId = toast.loading("Generating your course layout..");
-     const CourseId=await crypto.randomUUID();
+     const CourseId = crypto.randomUUID();
 
     try{
     setLoading(true);
@@ -39,20 +41,21 @@ function Hero() {
       courseId:CourseId
     });
 
-    console.log(result.data);
-    setLoading(false);
-    toast.success('Course layout generated successfully!',
-    {id:toastId});
-
-    // navigate to course editor page
-
-
+    console.log('Course created:', result.data);
+    
+    if (result.data.success) {
+      setLoading(false);
+      toast.success('Course layout generated successfully!', {id:toastId});
+      router.push('/course/'+CourseId);
+    } else {
+      throw new Error('Failed to create course');
+    }
 
   }
-  catch(e){
+  catch(e: any){
+    console.error('Error:', e.response?.data || e.message);
     setLoading(false);
-    toast.error('Something went wrong ,Please try again.',
-          {id:toastId});
+    toast.error('Something went wrong, Please try again.', {id:toastId});
   }
 
   }
