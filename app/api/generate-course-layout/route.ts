@@ -4,12 +4,23 @@ import{NextRequest} from "next/server";
 import { NextResponse } from "next/server";
 import { db } from "@/config/db";
 import { coursesTable } from "@/config/schema";
-import { currentUser } from "@clerk/nextjs/server";
+import { auth,currentUser } from "@clerk/nextjs/server";
+import {eq} from "drizzle-orm";
 
 
 export async function POST(req:NextRequest){
     const{userInput,courseId,type}=await req.json();
     const user=await currentUser();
+    const {has}=await auth();
+    const isPaidUser = has({ plan: "monthly" });
+
+    if(!isPaidUser){
+        const userCourses=await db.select().from(coursesTable)
+        .where(eq(coursesTable.userId,user?.primaryEmailAddress?.emailAddress as string));
+        if(userCourses?.length>=2){
+            return NextResponse.json({msg:'max limit'});
+        }
+    }
 
     const response=await client.chat.completions.create({
         model:'gpt-4o',
