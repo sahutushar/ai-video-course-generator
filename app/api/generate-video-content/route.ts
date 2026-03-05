@@ -40,7 +40,27 @@ export async function  POST(Req:NextRequest){
 
 
       const AiResult =response.choices[0].message?.content;
-       const VideoContentJson=JSON.parse(AiResult?.replace('```json','').replace('```','') || '[]');
+      
+      let cleanedJson = AiResult || '[]';
+      // Remove markdown code blocks
+      cleanedJson = cleanedJson.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      // Remove any text before the first [ or {
+      const jsonStart = Math.min(
+        cleanedJson.indexOf('[') >= 0 ? cleanedJson.indexOf('[') : Infinity,
+        cleanedJson.indexOf('{') >= 0 ? cleanedJson.indexOf('{') : Infinity
+      );
+      if (jsonStart !== Infinity && jsonStart > 0) {
+        cleanedJson = cleanedJson.substring(jsonStart);
+      }
+      
+      let VideoContentJson;
+      try {
+        VideoContentJson = JSON.parse(cleanedJson);
+      } catch (error) {
+        console.error('JSON Parse Error:', error);
+        console.error('AI Response:', cleanedJson);
+        return NextResponse.json({ error: 'AI returned invalid JSON', response: cleanedJson }, { status: 500 });
+      }
 
     // Audio File Generation using TTS for Narration
 
@@ -48,7 +68,6 @@ export async function  POST(Req:NextRequest){
 
 let audioFileUrls: string[] = [];
 for (let i = 0; i < VideoContentJson?.length; i++) {
-  if(i>0) break; // for testing,
   const narration = VideoContentJson[i].narration.fullText;
 
   const fonadaResult = await axios.post(
@@ -94,24 +113,36 @@ for (let i = 0; i < VideoContentJson?.length; i++) {
     try {
       for(let index = 0; index < VideoContentJson.length; index++){
         const slide = VideoContentJson[index];
-        //@ts-ignore
-        const result = await db.insert(chapterContentSlides).values({
-          chapterId: chapter.chapterId,
-          courseId: courseId,
-          slideIndex: slide.slideIndex,
-          slideId: slide.slideId,
-          audioFileName: slide.audioFileName,
-          narration: slide.narration,
-          revelDate: slide.revelData,
-          html: slide.html,
-          audioFileUrl: audioFileUrls[index] || 'pending',
-          caption: captionsArray[index] || {}
-        }).returning();
-        console.log('Inserted:', result);
+        
+        let retries = 3;
+        while(retries > 0) {
+          try {
+            //@ts-ignore
+            const result = await db.insert(chapterContentSlides).values({
+              chapterId: chapter.chapterId,
+              courseId: courseId,
+              slideIndex: slide.slideIndex,
+              slideId: slide.slideId,
+              audioFileName: slide.audioFileName,
+              narration: slide.narration,
+              revelDate: slide.revelData || [],
+              html: slide.html,
+              audioFileUrl: audioFileUrls[index] || 'pending',
+              caption: captionsArray[index] || {}
+            }).returning();
+            console.log('Inserted:', result);
+            break;
+          } catch (dbError: any) {
+            retries--;
+            if (retries === 0) throw dbError;
+            console.log(`Retry ${3 - retries}/3 for slide ${index}`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
       }
     } catch (error) {
       console.error('Database insert error:', error);
-      throw error;
+      return NextResponse.json({ error: 'Database save failed', details: error }, { status: 500 });
     }
 
     // Return Responses
@@ -129,7 +160,8 @@ const SaveAudioToStorage = async(audioBuffer:Buffer,fileName:string)=>{
 
   const Container=blobService.getContainerClient(process.env.AZURE_STORAGE_CONTAINER_NAME||"");
 
-  const blobName=`tts/${fileName}.mp3`;
+  const cleanFileName = fileName.replace(".mp3", "");
+  const blobName = `tts/${cleanFileName}.mp3`;
   const blockBlob=Container.getBlockBlobClient(blobName);
 
   await blockBlob.uploadData(audioBuffer,{

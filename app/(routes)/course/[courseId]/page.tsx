@@ -1,68 +1,131 @@
-"use client"
+"use client";
+
 import React, { useEffect, useState } from "react";
 import CourseInfoCard from "./_components/CourseInfoCard";
 import axios from "axios";
 import { useParams } from "next/navigation";
 import { Course } from "@/app/type/CourseType";
-import CourseList from "@/app/_components/CourseList";
 import CourseChapters from "./_components/CourseChapters";
 import { toast } from "sonner";
-import { index } from "drizzle-orm/gel-core";
+import { getAudioData } from "@remotion/media-utils";
 
-function coursePreview() {
-  const {courseId} = useParams();
-  const[courseDetail,setCourseDetail]=useState<Course>();
+function CoursePreview() {
+  const { courseId } = useParams();
+  const [courseDetail, setCourseDetail] = useState<Course | undefined>();
+
+  const fps = 30;
+  const slides = courseDetail?.chapterContentSlides ?? [];
+
+  const [durationsBySlidesId, setDurationsBySlideId] = useState<Record<
+    string,
+    number
+  > | null>(null);
 
   useEffect(() => {
-    courseId && GetCourseDetail();
+    if (courseId) {
+      GetCourseDetail();
+    }
   }, [courseId]);
 
-  const GetCourseDetail = async ( ) => {
-   const loadingToast= toast.loading('Fetching Course Details...');
-    const result = await axios.get('/api/course?courseId=' + courseId);
-    console.log(result.data);
+  const GetCourseDetail = async () => {
+    const loadingToast = toast.loading("Fetching Course Details...");
+
+    const result = await axios.get("/api/course?courseId=" + courseId);
+
     setCourseDetail(result.data);
-    toast.success('course Details Fetched Successfully!',{id:loadingToast});
-    if(result?.data?.chapterContentSlides?.length === 0){
-      //Generate Video subContent
-      GenerateVideoContent(result?.data);
 
-  }
-  };
-
-
-
-  const GenerateVideoContent=async(course:Course)=>{
-
-
-    for(let i=0;i<course?.courseLayout?.chapters?.length;i++){
-   
- 
-  if(i>0) break;  // For Testing,Remove this line after
-   const toastLoading = toast.loading(
-     "Generating Video Content for Chapter " + (i + 1),
-   );
-     const result=await axios.post('/api/generate-video-content',{
-      chapter:course?.courseLayout?.chapters[0],
-      courseId:course?.courseId
+    toast.success("Course Details Fetched Successfully!", {
+      id: loadingToast,
     });
 
-    console.log(JSON.stringify(result.data));
+    if (result?.data?.chapterContentSlides?.length === 0) {
+      GenerateVideoContent(result?.data);
+    }
+  };
 
-    toast.success('Video Content Generated for Chapter '+(i+1),{id:toastLoading});
- }
-   
-  
-  
-  }
+  const GenerateVideoContent = async (course: Course) => {
+    const chapters = course?.courseLayout?.chapters ?? [];
 
+    for (let i = 0; i < chapters.length; i++) {
+      const toastLoading = toast.loading(
+        "Generating Video Content for Chapter " + (i + 1),
+      );
+
+      try {
+        const result = await axios.post("/api/generate-video-content", {
+          chapter: chapters[i],
+          courseId: course?.courseId,
+        });
+
+        console.log(result.data);
+
+        toast.success("Video Content Generated for Chapter " + (i + 1), {
+          id: toastLoading,
+        });
+        
+        // Wait 3 seconds between chapters to avoid overwhelming the database
+        if (i < chapters.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      } catch (error) {
+        console.error('Chapter generation failed:', error);
+        toast.error("Failed to generate Chapter " + (i + 1), {
+          id: toastLoading,
+        });
+      }
+    }
+    
+    GetCourseDetail();
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (!slides.length) return;
+
+      const entries = await Promise.all(
+        slides.map(async (slide) => {
+          try {
+            const audioData = await getAudioData(slide.audioFileUrl);
+            const audioSec = audioData.durationInSeconds;
+
+            const frames = Math.max(1, Math.ceil(audioSec * fps));
+
+            return [slide.slideId, frames] as const;
+          } catch (error) {
+            console.error("Audio decoding failed:", slide.audioFileUrl);
+
+            return [slide.slideId, fps * 6] as const;
+          }
+        }),
+      );
+
+      if (!cancelled) {
+        setDurationsBySlideId(Object.fromEntries(entries));
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slides]);
 
   return (
     <div className="flex flex-col items-center">
-      <CourseInfoCard course={courseDetail} />
-      <CourseChapters course={courseDetail} />
+      <CourseInfoCard
+        course={courseDetail}
+        durationsBySlideId={durationsBySlidesId}
+      />
+
+      <CourseChapters
+        course={courseDetail}
+        durationsBySlideId={durationsBySlidesId}
+      />
     </div>
   );
 }
 
-export default coursePreview;
+export default CoursePreview;
