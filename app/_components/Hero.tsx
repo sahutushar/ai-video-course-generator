@@ -41,15 +41,14 @@ function Hero() {
       courseId:CourseId
     });
 
-    console.log('Course created:', result.data);
-    
-    if (result.data.success) {
-      setLoading(false);
-      toast.success('Course layout generated successfully!', {id:toastId});
-      router.push('/course/'+CourseId);
-    } else {
-      throw new Error('Failed to create course');
-    }
+    console.log(result.data);
+    setLoading(false);
+    toast.success('Course layout generated successfully!',
+    {id:toastId});
+
+    // navigate to course editor page
+
+   router.push('/course/'+CourseId);
 
   }
   catch(e: any){
