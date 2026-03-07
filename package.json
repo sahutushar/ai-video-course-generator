@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "cross-env NEXT_PRIVATE_TURBO=false next dev",
     "build": "next build",
     "start": "next start"
   },
@@ -52,6 +52,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "cross-env": "^10.1.0",
     "drizzle-kit": "^0.31.9",
     "shadcn": "^3.8.5",
     "tailwindcss": "^4",

@@ -9,7 +9,8 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  turbopack: {},
+  // Disable turbopack temporarily to avoid persistence directory issues
+  // turbopack: {},
 };
 
 export default nextConfig;

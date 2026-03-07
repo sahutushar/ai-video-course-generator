@@ -7,14 +7,9 @@ import {BlobServiceClient} from "@azure/storage-blob";
 import { Container } from "lucide-react";
 import { chapterContentSlides } from "@/config/schema";
 import { db } from "@/config/db";
-import { Languages } from "lucide-react";
-// import Replicate from "replicate";
-// const replicate = new Replicate({
-//   auth:process.env.REPLICATE_API_KEY || "",
-// });
 import Groq from "groq-sdk";
-import { Index } from "drizzle-orm/gel-core";
 
+export const maxDuration = 300; // 5 minutes for Pro plan, 60 for Hobby
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,

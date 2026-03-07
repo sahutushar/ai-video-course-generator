@@ -7,6 +7,7 @@ import { coursesTable } from "@/config/schema";
 import { auth,currentUser } from "@clerk/nextjs/server";
 import {eq} from "drizzle-orm";
 
+export const maxDuration = 60; // 1 minute timeout
 
 export async function POST(req:NextRequest){
     const{userInput,courseId,type}=await req.json();
@@ -26,7 +27,7 @@ export async function POST(req:NextRequest){
         model:'gpt-4o',
         messages:[
             {role:'system',content:Course_config_prompt},
-            {role:'user',content:'Course Topic is'+userInput}
+            {role:'user',content:'Course Topic is: '+userInput}
         ]
     });
 
