@@ -123,11 +123,12 @@ flowchart TD
     PROVIDER --> CHECK_USER
     CHECK_USER -->|No| INSERT_USER --> CTX
     CHECK_USER -->|Yes| RETURN_USER --> CTX
+
     CTX --> HOME
 
     subgraph HOME["🏠 Home Page  /"]
         HERO["Hero Component\nTextarea + Course Type Select"]
-        SUGGESTIONS["Quick Suggestion Chips"]
+        SUGGESTIONS["Quick Suggestion Chips\n(React · Python · HTML · etc.)"]
         COURSELIST["CourseList Component\nGET /api/course → renders cards"]
     end
 
@@ -138,12 +139,12 @@ flowchart TD
         CLICK_SEND["Click Send Button"]
         AUTH_CHECK{Signed in?}
         SIGN_IN_MODAL["Clerk SignInButton modal"]
-        PLAN_CHECK{isPaidUser?}
+        PLAN_CHECK{isPaidUser\n(Clerk monthly plan)?}
         COUNT_CHECK{courses ≥ 2?}
         MAX_LIMIT["Toast: Max limit reached\nRedirect to /pricing"]
-        CALL_GPT["POST /api/generate-course-layout\nAzure OpenAI GPT-4o"]
-        GPT_RESP["GPT-4o returns JSON\n{ courseName, level, totalChapters, chapters[] }"]
-        SAVE_COURSE["INSERT coursesTable"]
+        CALL_GPT["POST /api/generate-course-layout\nAzure OpenAI GPT-4o\nCourse_config_prompt"]
+        GPT_RESP["GPT-4o returns JSON\n{ courseName, level,\ntotalChapters, chapters[] }"]
+        SAVE_COURSE["INSERT coursesTable\ncourseId · courseName\ncourseLayout · userId"]
         NAVIGATE["Navigate to /course/[courseId]"]
     end
 
@@ -156,39 +157,60 @@ flowchart TD
     COUNT_CHECK -->|< 2 courses| CALL_GPT
     PLAN_CHECK -->|Paid user| CALL_GPT
     CALL_GPT --> GPT_RESP --> SAVE_COURSE --> NAVIGATE
+
     NAVIGATE --> COURSE_PAGE
 
     subgraph COURSE_PAGE["📺 Course Page  /course/[courseId]"]
-        FETCH_COURSE["GET /api/course?courseId=xxx"]
-        SLIDES_CHECK{slides.length > 0?}
-        SHOW_PLAYER["Show Remotion Player"]
-        TRIGGER_GEN["GenerateVideoContent()"]
+        FETCH_COURSE["GET /api/course?courseId=xxx\nFetch course + all slides"]
+        SLIDES_CHECK{chapterContentSlides\n.length > 0?}
+        SHOW_PLAYER["Slides exist → show Remotion Player"]
+        TRIGGER_GEN["Slides empty → GenerateVideoContent()"]
     end
 
     FETCH_COURSE --> SLIDES_CHECK
     SLIDES_CHECK -->|Yes| SHOW_PLAYER
     SLIDES_CHECK -->|No| TRIGGER_GEN
+
     TRIGGER_GEN --> VIDEO_GEN
 
-    subgraph VIDEO_GEN["🎬 Video Content Generation"]
-        FOR_CHAPTER["For each chapter"]
-        POST_VIDEO["POST /api/generate-video-content"]
-        GPT_SLIDES["GPT-4o returns slides[]"]
-        FOR_SLIDE["For each slide"]
-        TTS_CALL["Fonada AI TTS → MP3"]
-        BLOB_UPLOAD["Upload to Azure Blob Storage"]
-        GROQ_CALL["Groq Whisper → captions"]
-        INSERT_SLIDE["INSERT chapterContentSlides"]
-        WAIT["Wait 3s between chapters"]
-        REFRESH["Refresh course detail"]
+    subgraph VIDEO_GEN["🎬 Video Content Generation  (per chapter, sequential)"]
+        FOR_CHAPTER["For each chapter in courseLayout.chapters"]
+        POST_VIDEO["POST /api/generate-video-content\n{ chapter, courseId }"]
+        GPT_SLIDES["Azure OpenAI GPT-4o\nGENERATE_VIDEO_CONTENT_PROMPT\nReturns slides[]"]
+        FOR_SLIDE["For each slide in slides[]"]
+        TTS_CALL["Fonada AI TTS\nPOST narration.fullText\nVoice: Vaanee · Language: English"]
+        AUDIO_BUF["Receive MP3 buffer\n(arraybuffer)"]
+        BLOB_UPLOAD["Azure Blob Storage\nUpload MP3 → tts/{slideId}.mp3\nGet public URL"]
+        GROQ_CALL["Groq Whisper Large v3\nTranscribe audio → caption text"]
+        INSERT_SLIDE["INSERT chapterContentSlides\nslideId · html · narration\naudioFileUrl · caption · revelData"]
+        WAIT["Wait 3s between chapters\n(DB rate limit protection)"]
+        REFRESH["Refresh course detail\nGET /api/course?courseId=xxx"]
     end
 
     FOR_CHAPTER --> POST_VIDEO --> GPT_SLIDES --> FOR_SLIDE
-    FOR_SLIDE --> TTS_CALL --> BLOB_UPLOAD --> GROQ_CALL --> INSERT_SLIDE
+    FOR_SLIDE --> TTS_CALL --> AUDIO_BUF --> BLOB_UPLOAD --> GROQ_CALL --> INSERT_SLIDE
     INSERT_SLIDE -->|next slide| FOR_SLIDE
     INSERT_SLIDE -->|all slides done| WAIT
     WAIT -->|next chapter| FOR_CHAPTER
     WAIT -->|all chapters done| REFRESH --> SHOW_PLAYER
+
+    SHOW_PLAYER --> PLAYBACK
+
+    subgraph PLAYBACK["🎥 Remotion Video Playback"]
+        MEASURE["getAudioData(audioFileUrl)\n@remotion/media-utils\nMeasure real duration per slide"]
+        DUR_MAP["Build durationsBySlideId map\n{ slideId → frames }"]
+        COMPOSITION["CourseComposition\nBuild timeline array"]
+        SEQUENCE["For each slide\n<Sequence from=offset durationInFrames=dur>"]
+        IFRAME["SlideIFrameWithReveal\n<iframe srcDoc={html + REVEAL_RUNTIME_SCRIPT}>"]
+        AUDIO_TAG["<Audio src={audioFileUrl} />"]
+        REVEAL["postMessage REVEAL events\nat evenly spaced intervals\n(r1 → r2 → r3...)"]
+        CSS_ANIM[".reveal → .reveal.is-on\nopacity + translateY transition"]
+    end
+
+    MEASURE --> DUR_MAP --> COMPOSITION --> SEQUENCE
+    SEQUENCE --> IFRAME
+    SEQUENCE --> AUDIO_TAG
+    IFRAME --> REVEAL --> CSS_ANIM
 ```
 
 ---
@@ -198,20 +220,20 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph Clerk["Clerk Auth + Billing"]
-        SIGN["Sign In / Sign Up"]
+        SIGN["Sign In / Sign Up\n(modal or dedicated page)"]
         SESSION["Active Session\nuseUser() hook"]
         PLAN["Plan Check\nauth().has({ plan: 'monthly' })"]
-        PRICING["Pricing Page /pricing"]
+        PRICING["Pricing Page /pricing\n<PricingTable /> component"]
     end
 
     subgraph App["App Logic"]
         FREE["Free User\nmax 2 courses"]
         PAID["Paid User\nunlimited courses"]
-        LIMIT["Return max limit\nShow upgrade toast"]
+        LIMIT["Return { msg: 'max limit' }\nShow upgrade toast"]
     end
 
     SIGN --> SESSION
-    SESSION --> PLAN
+    SESSION -->|"on every API call"| PLAN
     PLAN -->|"isPaidUser = false"| FREE
     PLAN -->|"isPaidUser = true"| PAID
     FREE -->|"count ≥ 2"| LIMIT
